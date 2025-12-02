@@ -1,48 +1,35 @@
 /**
- * Parser for inventory.json files.
+ * Parser for inventory.json files using zod validation.
  */
 
+import { z } from 'zod';
 import { type Result, ok, err } from '../lib/result.js';
 import type { InventoryRecord } from '../lib/types.js';
 import { logger } from '../lib/logger.js';
 
-interface RawInventoryItem {
-  item: string;
-  quantity: number;
-}
+const InventoryItemSchema = z.object({
+  item: z.string().min(1),
+  quantity: z.number().nonnegative()
+});
 
-function isValidInventoryItem(obj: unknown): obj is RawInventoryItem {
-  if (typeof obj !== 'object' || obj === null) return false;
-  const record = obj as Record<string, unknown>;
-  return (
-    typeof record['item'] === 'string' &&
-    typeof record['quantity'] === 'number' &&
-    record['quantity'] >= 0
-  );
-}
+const InventoryFileSchema = z.array(InventoryItemSchema);
 
 export function parseInventoryFile(content: string): Result<readonly InventoryRecord[], Error> {
   try {
     const parsed: unknown = JSON.parse(content);
+    const validated = InventoryFileSchema.safeParse(parsed);
 
-    if (!Array.isArray(parsed)) {
-      return err(new Error('Expected an array at root level'));
+    if (!validated.success) {
+      logger.warn({ errors: validated.error.issues }, 'Inventory validation failed');
+      return err(new Error(`Invalid inventory format: ${validated.error.message}`));
     }
 
-    const records: InventoryRecord[] = [];
+    const records: InventoryRecord[] = validated.data.map(item => ({
+      item: item.item.toLowerCase(),
+      quantity: Math.floor(item.quantity)
+    }));
 
-    for (const item of parsed) {
-      if (!isValidInventoryItem(item)) {
-        logger.warn('Invalid inventory item, skipping', { item });
-        continue;
-      }
-      records.push({
-        item: item.item.toLowerCase(),
-        quantity: Math.floor(item.quantity)
-      });
-    }
-
-    logger.debug('Parsed inventory file', { recordCount: records.length });
+    logger.debug({ recordCount: records.length }, 'Parsed inventory file');
     return ok(records);
   } catch (error) {
     return err(new Error(`Failed to parse inventory file: ${error instanceof Error ? error.message : error}`));

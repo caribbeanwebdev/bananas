@@ -27,7 +27,7 @@ export function reconcileItem(
     return { status: 'ok', item, expected, actual };
   }
 
-  logger.debug('Discrepancy found', { item, expected, actual, difference });
+  logger.debug({ item, expected, actual, difference }, 'Discrepancy found');
   return { status: 'discrepancy', item, expected, actual, difference };
 }
 
@@ -93,11 +93,11 @@ export function createAuditReport(
   const results = reconcileAll(deliveryMap, usageMap, inventoryMap);
   const summary = calculateSummary(results);
 
-  logger.info('Audit report generated', {
+  logger.info({
     totalItems: summary.totalItems,
     discrepancies: summary.discrepancyCount,
     unknown: summary.unknownCount
-  });
+  }, 'Audit report generated');
 
   return { timestamp: new Date(), results, summary };
 }

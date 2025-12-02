@@ -1,30 +1,42 @@
 /**
- * Parser for usage.csv files.
+ * Parser for usage.csv files using csv-parse library.
  */
 
+import { parse } from 'csv-parse/sync';
 import { type Result, ok, err } from '../lib/result.js';
 import type { UsageRecord } from '../lib/types.js';
 import { logger } from '../lib/logger.js';
 
+interface CsvRow {
+  food: string;
+  quantity: string;
+}
+
 export function parseUsageFile(content: string): Result<readonly UsageRecord[], Error> {
   try {
-    const lines = content.split(/\r?\n/).filter(line => line.trim() !== '');
-    if (lines.length === 0) return ok([]);
+    if (content.trim() === '') return ok([]);
 
-    const dataLines = lines.slice(1); // Skip header
+    const rows = parse(content, {
+      columns: true,
+      skip_empty_lines: true,
+      trim: true
+    }) as CsvRow[];
+
     const records: UsageRecord[] = [];
 
-    for (const line of dataLines) {
-      const fields = line.split(',').map(f => f.trim());
-      const item = fields[0]?.toLowerCase();
-      const quantity = Number(fields[1]);
+    for (const row of rows) {
+      const item = row.food?.toLowerCase();
+      const quantity = Number(row.quantity);
 
-      if (!item || Number.isNaN(quantity) || quantity < 0) continue;
+      if (!item || Number.isNaN(quantity) || quantity < 0) {
+        logger.warn({ row }, 'Invalid usage row, skipping');
+        continue;
+      }
 
       records.push({ item, quantity: Math.floor(quantity) });
     }
 
-    logger.debug('Parsed usage file', { recordCount: records.length });
+    logger.debug({ recordCount: records.length }, 'Parsed usage file');
     return ok(records);
   } catch (error) {
     return err(new Error(`Failed to parse usage file: ${error instanceof Error ? error.message : error}`));
